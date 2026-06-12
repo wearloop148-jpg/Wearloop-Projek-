@@ -19,6 +19,14 @@ interface AdminDashboardProps {
   onUpdateReviews: React.Dispatch<React.SetStateAction<ProductFeedback[]>>;
   categoriesData?: CategoryData[];
   onUpdateCategories?: React.Dispatch<React.SetStateAction<CategoryData[]>>;
+  showAlert?: (
+    title: string,
+    message: string,
+    type?: "info" | "warning" | "success" | "error",
+    onConfirm?: () => void,
+    confirmLabel?: string,
+    cancelLabel?: string
+  ) => void;
 }
 
 interface SimulatedChat {
@@ -46,6 +54,7 @@ export default function AdminDashboard({
   onUpdateReviews,
   categoriesData = [],
   onUpdateCategories,
+  showAlert,
 }: AdminDashboardProps) {
   // Tabs: "overview", "users", "products", "categories", "chats", "reports", "ratings"
   const [activeTab, setActiveTab] = useState<
@@ -94,6 +103,49 @@ export default function AdminDashboard({
   const [perfumePhoto, setPerfumePhoto] = useState("https://images.unsplash.com/photo-1615485290382-441e4d049cb5?q=80&w=600&auto=format&fit=crop");
   const [fullPhoto, setFullPhoto] = useState("https://images.unsplash.com/photo-1556821840-3a63f95609a7?q=80&w=600&auto=format&fit=crop");
   const [detailPhoto, setDetailPhoto] = useState("https://images.unsplash.com/photo-1543163521-1bf539c55dd2?q=80&w=600&auto=format&fit=crop");
+
+  // Helper to read and compress image before setting state
+  const compressAndSetImage = (file: File, callback: (url: string) => void) => {
+    const reader = new FileReader();
+    reader.onloadend = () => {
+      const base64 = reader.result;
+      if (typeof base64 !== "string") return;
+      
+      const img = new Image();
+      img.src = base64;
+      img.onload = () => {
+        const canvas = document.createElement("canvas");
+        const maxDim = 480; // Small and crisp
+        let w = img.width;
+        let h = img.height;
+        if (w > h) {
+          if (w > maxDim) {
+            h = Math.round((h * maxDim) / w);
+            w = maxDim;
+          }
+        } else {
+          if (h > maxDim) {
+            w = Math.round((w * maxDim) / h);
+            h = maxDim;
+          }
+        }
+        canvas.width = w;
+        canvas.height = h;
+        const ctx = canvas.getContext("2d");
+        if (ctx) {
+          ctx.drawImage(img, 0, 0, w, h);
+          const compressed = canvas.toDataURL("image/jpeg", 0.65);
+          callback(compressed);
+        } else {
+          callback(base64);
+        }
+      };
+      img.onerror = () => {
+        callback(base64);
+      };
+    };
+    reader.readAsDataURL(file);
+  };
 
   // Reviews & Rating are now managed via global props (reviews & onUpdateReviews) as requested
 
@@ -205,8 +257,19 @@ export default function AdminDashboard({
   };
 
   const handleDeleteProduct = (productId: string) => {
-    const confirmDelete = window.confirm("Apakah Anda yakin ingin menghapus produk ini secara permanen?");
-    if (confirmDelete) {
+    if (showAlert) {
+      showAlert(
+        "Hapus Produk Permanen",
+        "Apakah Anda yakin ingin menghapus produk ini secara permanen dari database Wearloop? Tindakan ini tidak dapat dibatalkan.",
+        "warning",
+        () => {
+          onUpdateProductsList((prev) => prev.filter((p) => p.id !== productId));
+          showNotif("Produk berhasil dihapus dari database Wearloop!");
+        },
+        "Hapus Permanen",
+        "Batal"
+      );
+    } else {
       onUpdateProductsList((prev) => prev.filter((p) => p.id !== productId));
       showNotif("Produk berhasil dihapus dari database Wearloop!");
     }
@@ -270,8 +333,19 @@ export default function AdminDashboard({
   };
 
   const handleDeleteCategory = (cat: string) => {
-    const conf = window.confirm(`Apakah Anda yakin ingin menghapus kategori "${cat}"?`);
-    if (conf) {
+    if (showAlert) {
+      showAlert(
+        "Hapus Kategori",
+        `Apakah Anda yakin ingin menghapus kategori "${cat}"?`,
+        "warning",
+        () => {
+          if (onUpdateCategories) {
+            onUpdateCategories((prev) => prev.filter(c => c.name !== cat));
+          }
+          showNotif(`Kategori "${cat}" berhasil dihapus.`);
+        }
+      );
+    } else {
       if (onUpdateCategories) {
         onUpdateCategories((prev) => prev.filter(c => c.name !== cat));
       }
@@ -292,16 +366,34 @@ export default function AdminDashboard({
   };
 
   const handleDeleteBrand = (br: string) => {
-    const conf = window.confirm(`Apakah Anda yakin ingin menghapus brand "${br}"?`);
-    if (conf) {
+    if (showAlert) {
+      showAlert(
+        "Hapus Merek Brand",
+        `Apakah Anda yakin ingin menghapus brand "${br}"?`,
+        "warning",
+        () => {
+          setBrands(brands.filter(b => b !== br));
+          showNotif(`Brand "${br}" berhasil dihapus.`);
+        }
+      );
+    } else {
       setBrands(brands.filter(b => b !== br));
       showNotif(`Brand "${br}" berhasil dihapus.`);
     }
   };
 
   const handleDeleteReview = (id: string) => {
-    const conf = window.confirm("Apakah Anda yakin ingin menghapus ulasan ini?");
-    if (conf) {
+    if (showAlert) {
+      showAlert(
+        "Hapus Ulasan Pengguna",
+        "Apakah Anda yakin ingin menghapus ulasan ini?",
+        "warning",
+        () => {
+          onUpdateReviews(prev => prev.filter(r => r.id !== id));
+          showNotif("Ulasan berhasil dihapus.");
+        }
+      );
+    } else {
       onUpdateReviews(prev => prev.filter(r => r.id !== id));
       showNotif("Ulasan berhasil dihapus.");
     }
@@ -989,11 +1081,7 @@ export default function AdminDashboard({
                           onChange={(e) => {
                             const file = e.target.files?.[0];
                             if (file) {
-                              const r = new FileReader();
-                              r.onloadend = () => {
-                                if (typeof r.result === "string") setWashPhoto(r.result);
-                              };
-                              r.readAsDataURL(file);
+                              compressAndSetImage(file, setWashPhoto);
                             }
                           }}
                           className="w-full text-[9px] text-gray-400 file:mr-2 file:py-0.5 file:px-1.5 file:rounded file:border-0 file:text-[9px] file:font-semibold file:bg-blue-50 file:text-blue-700 hover:file:bg-blue-100 cursor-pointer"
@@ -1016,11 +1104,7 @@ export default function AdminDashboard({
                           onChange={(e) => {
                             const file = e.target.files?.[0];
                             if (file) {
-                              const r = new FileReader();
-                              r.onloadend = () => {
-                                if (typeof r.result === "string") setPerfumePhoto(r.result);
-                              };
-                              r.readAsDataURL(file);
+                              compressAndSetImage(file, setPerfumePhoto);
                             }
                           }}
                           className="w-full text-[9px] text-gray-400 file:mr-2 file:py-0.5 file:px-1.5 file:rounded file:border-0 file:text-[9px] file:font-semibold file:bg-blue-50 file:text-blue-700 hover:file:bg-blue-100 cursor-pointer"
@@ -1043,11 +1127,7 @@ export default function AdminDashboard({
                           onChange={(e) => {
                             const file = e.target.files?.[0];
                             if (file) {
-                              const r = new FileReader();
-                              r.onloadend = () => {
-                                if (typeof r.result === "string") setFullPhoto(r.result);
-                              };
-                              r.readAsDataURL(file);
+                              compressAndSetImage(file, setFullPhoto);
                             }
                           }}
                           className="w-full text-[9px] text-gray-400 file:mr-2 file:py-0.5 file:px-1.5 file:rounded file:border-0 file:text-[9px] file:font-semibold file:bg-blue-50 file:text-blue-700 hover:file:bg-blue-100 cursor-pointer"
@@ -1070,11 +1150,7 @@ export default function AdminDashboard({
                           onChange={(e) => {
                             const file = e.target.files?.[0];
                             if (file) {
-                              const r = new FileReader();
-                              r.onloadend = () => {
-                                if (typeof r.result === "string") setDetailPhoto(r.result);
-                              };
-                              r.readAsDataURL(file);
+                              compressAndSetImage(file, setDetailPhoto);
                             }
                           }}
                           className="w-full text-[9px] text-gray-400 file:mr-2 file:py-0.5 file:px-1.5 file:rounded file:border-0 file:text-[9px] file:font-semibold file:bg-blue-50 file:text-blue-700 hover:file:bg-blue-100 cursor-pointer"

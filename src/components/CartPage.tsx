@@ -740,7 +740,39 @@ Silakan lakukan verifikasi pembayaran transfer bank Anda, dan segera kemas & sia
                                 if (file) {
                                   const reader = new FileReader();
                                   reader.onloadend = () => {
-                                    setProofImage(reader.result as string);
+                                    const base64 = reader.result;
+                                    if (typeof base64 !== "string") return;
+                                    const img = new Image();
+                                    img.src = base64;
+                                    img.onload = () => {
+                                      const canvas = document.createElement("canvas");
+                                      const maxDim = 480;
+                                      let w = img.width;
+                                      let h = img.height;
+                                      if (w > h) {
+                                        if (w > maxDim) {
+                                          h = Math.round((h * maxDim) / w);
+                                          w = maxDim;
+                                        }
+                                      } else {
+                                        if (h > maxDim) {
+                                          w = Math.round((w * maxDim) / h);
+                                          h = maxDim;
+                                        }
+                                      }
+                                      canvas.width = w;
+                                      canvas.height = h;
+                                      const ctx = canvas.getContext("2d");
+                                      if (ctx) {
+                                        ctx.drawImage(img, 0, 0, w, h);
+                                        setProofImage(canvas.toDataURL("image/jpeg", 0.6));
+                                      } else {
+                                        setProofImage(base64);
+                                      }
+                                    };
+                                    img.onerror = () => {
+                                      setProofImage(base64);
+                                    };
                                   };
                                   reader.readAsDataURL(file);
                                 }

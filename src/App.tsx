@@ -50,55 +50,46 @@ const safeStorage = {
 };
 
 export default function App() {
-  const [activePage, setActivePage] = useState<Page>("beranda");
-  const [selectedProduct, setSelectedProduct] = useState<Product | null>(null);
-  const [selectedShopName, setSelectedShopName] = useState<string>("Budi Vintage");
-  const [searchQuery, setSearchQuery] = useState("");
-  
-  // Initialize default PRODUCTS with persistence, merging latest seed products to guarantee Featured Products load perfectly
-  const [products, setProducts] = useState<Product[]>(() => {
-    const cached = safeStorage.getItem("wearloop_products");
-    let loaded: Product[] = [];
+  const [activePage, setActivePage] = useState<Page>(() => {
+    const cached = safeStorage.getItem("wearloop_active_page");
+    return (cached as Page) || "beranda";
+  });
+  const [selectedProduct, setSelectedProduct] = useState<Product | null>(() => {
+    const cached = safeStorage.getItem("wearloop_selected_product");
     if (cached) {
       try {
-        loaded = JSON.parse(cached);
+        return JSON.parse(cached);
+      } catch (e) {
+        console.error("Failed to parse wearloop_selected_product:", e);
+      }
+    }
+    return null;
+  });
+  const [selectedShopName, setSelectedShopName] = useState<string>(() => {
+    const cached = safeStorage.getItem("wearloop_selected_shop_name");
+    return cached || "Budi Vintage";
+  });
+  const [searchQuery, setSearchQuery] = useState("");
+  
+  // Initialize default PRODUCTS with persistence
+  const [products, setProducts] = useState<Product[]>(() => {
+    const cached = safeStorage.getItem("wearloop_products");
+    if (cached) {
+      try {
+        return JSON.parse(cached);
       } catch (e) {
         console.error("Failed to parse wearloop_products from localStorage:", e);
       }
     }
     
-    // Process the latest list from PRODUCTS
-    const defaultList = PRODUCTS.map((p) => ({
+    // Default fallback if no cache exists
+    return PRODUCTS.map((p) => ({
       ...p,
       isApproved: p.isApproved === undefined ? true : p.isApproved,
       status: p.status === undefined ? "active" : p.status,
       sellerId: p.sellerId || "seller-1",
       sellerName: p.sellerName || "Wearloop Partner",
     }));
-
-    if (!loaded || loaded.length === 0) {
-      return defaultList;
-    }
-
-    // Merge: Keep all items from cache, but if a default item exists, merge it to keep properties/isFeatured up-to-date
-    const merged = [...loaded];
-    defaultList.forEach((defP) => {
-      const idx = merged.findIndex((p) => p.id === defP.id);
-      if (idx === -1) {
-        merged.push(defP);
-      } else {
-        merged[idx] = {
-          ...defP,
-          ...merged[idx],
-          isFeatured: defP.isFeatured, // Sync isFeatured so it matches the latest designs
-          isApproved: merged[idx].isApproved !== undefined ? merged[idx].isApproved : defP.isApproved,
-          status: merged[idx].status || defP.status,
-          image: defP.image || merged[idx].image, // Sync updated images from the data layer
-        };
-      }
-    });
-
-    return merged;
   });
   
   const [categoriesData, setCategoriesData] = useState<CategoryData[]>(() => {
@@ -435,6 +426,22 @@ export default function App() {
     safeStorage.setItem("wearloop_chat_rooms", JSON.stringify(chatRooms));
   }, [chatRooms]);
 
+  useEffect(() => {
+    safeStorage.setItem("wearloop_active_page", activePage);
+  }, [activePage]);
+
+  useEffect(() => {
+    if (selectedProduct) {
+      safeStorage.setItem("wearloop_selected_product", JSON.stringify(selectedProduct));
+    } else {
+      safeStorage.removeItem("wearloop_selected_product");
+    }
+  }, [selectedProduct]);
+
+  useEffect(() => {
+    safeStorage.setItem("wearloop_selected_shop_name", selectedShopName);
+  }, [selectedShopName]);
+
   // Auto-guarantee a Super Admin chat room exists for any logged-in user
   useEffect(() => {
     if (currentUser && currentUser.role !== "admin") {
@@ -603,6 +610,8 @@ export default function App() {
     message: string;
     type: "info" | "warning" | "success" | "error";
     onConfirm?: () => void;
+    confirmLabel?: string;
+    cancelLabel?: string;
   }>({
     isOpen: false,
     title: "",
@@ -614,7 +623,9 @@ export default function App() {
     title: string,
     message: string,
     type: "info" | "warning" | "success" | "error" = "warning",
-    onConfirm?: () => void
+    onConfirm?: () => void,
+    confirmLabel?: string,
+    cancelLabel?: string
   ) => {
     setAlertConfig({
       isOpen: true,
@@ -622,6 +633,8 @@ export default function App() {
       message,
       type,
       onConfirm,
+      confirmLabel,
+      cancelLabel,
     });
   };
 
@@ -918,6 +931,7 @@ export default function App() {
               setActivePage("login");
             }}
             onOpenChatWithAdmin={handleOpenChatWithAdmin}
+            showAlert={showAlert}
           />
         )}
 
@@ -937,6 +951,7 @@ export default function App() {
             onUpdateReviews={setReviews}
             categoriesData={categoriesData}
             onUpdateCategories={setCategoriesData}
+            showAlert={showAlert}
           />
         )}
 
@@ -982,6 +997,8 @@ export default function App() {
         type={alertConfig.type}
         onClose={() => setAlertConfig((prev) => ({ ...prev, isOpen: false }))}
         onConfirm={alertConfig.onConfirm}
+        confirmLabel={alertConfig.confirmLabel}
+        cancelLabel={alertConfig.cancelLabel}
       />
 
       {/* Footer segment */}
