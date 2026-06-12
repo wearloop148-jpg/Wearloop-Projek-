@@ -1,0 +1,6 @@
+{
+  "name": "Wearloop",
+  "description": "Wearloop - Platform thrift terpercaya dengan ribuan item pilihan untuk gaya terbaikmu.",
+  "requestFramePermissions": [],
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+}
