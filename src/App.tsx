@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from "react";
+import React, { useState, useEffect, useRef } from "react";
 import { Page, Product, FilterState, User, Order, ChatRoom, ChatMessage, ProductFeedback, CategoryData } from "./types";
 import { PRODUCTS, CATEGORIES_DATA } from "./data";
 
@@ -72,7 +72,7 @@ export default function App() {
   const [searchQuery, setSearchQuery] = useState("");
   
   // Initialize default PRODUCTS with persistence
-  const [products, setProducts] = useState<Product[]>(() => {
+  const [products, rawSetProducts] = useState<Product[]>(() => {
     const cached = safeStorage.getItem("wearloop_products");
     if (cached) {
       try {
@@ -92,7 +92,7 @@ export default function App() {
     }));
   });
   
-  const [categoriesData, setCategoriesData] = useState<CategoryData[]>(() => {
+  const [categoriesData, rawSetCategoriesData] = useState<CategoryData[]>(() => {
     const cached = safeStorage.getItem("wearloop_categories");
     if (cached) {
       try {
@@ -147,7 +147,7 @@ export default function App() {
   });
   
   // Seed initial users list with active accounts for Buyer, Seller, Admin, and a pending seller
-  const [registeredUsers, setRegisteredUsers] = useState<User[]>(() => {
+  const [registeredUsers, rawSetRegisteredUsers] = useState<User[]>(() => {
     const cached = safeStorage.getItem("wearloop_users");
     if (cached) {
       try {
@@ -206,7 +206,7 @@ export default function App() {
   });
 
   // Initial order tracking structure
-  const [orders, setOrders] = useState<Order[]>(() => {
+  const [orders, rawSetOrders] = useState<Order[]>(() => {
     const cached = safeStorage.getItem("wearloop_orders");
     if (cached) {
       try {
@@ -219,7 +219,7 @@ export default function App() {
   });
 
   // Global Moderator Product Reviews state
-  const [reviews, setReviews] = useState<ProductFeedback[]>(() => {
+  const [reviews, rawSetReviews] = useState<ProductFeedback[]>(() => {
     const cached = safeStorage.getItem("wearloop_reviews");
     if (cached) {
       try {
@@ -263,7 +263,7 @@ export default function App() {
   });
 
   // --- FLOATING CHAT SYSTEM STATE ---
-  const [chatRooms, setChatRooms] = useState<ChatRoom[]>(() => {
+  const [chatRooms, rawSetChatRooms] = useState<ChatRoom[]>(() => {
     const cached = safeStorage.getItem("wearloop_chat_rooms");
     if (cached) {
       try {
@@ -385,14 +385,266 @@ export default function App() {
   const [chatWidgetOpen, setChatWidgetOpen] = useState(false);
   const [activeChatRoomId, setActiveChatRoomId] = useState<string | null>(null);
 
-  // Auto-sync state variables to safeStorage when changed
-  useEffect(() => {
-    safeStorage.setItem("wearloop_products", JSON.stringify(products));
-  }, [products]);
+  // Synchronizer references to detect actual local edits vs remote server fetches
+  const lastSyncedRef = useRef<string>("");
+  const isFirstSyncRef = useRef<boolean>(true);
 
+  // References to hold the latest state values for non-blocking clean polling
+  const productsRef = useRef<Product[]>(products);
+  const categoriesRef = useRef<CategoryData[]>(categoriesData);
+  const usersRef = useRef<User[]>(registeredUsers);
+  const ordersRef = useRef<Order[]>(orders);
+  const reviewsRef = useRef<ProductFeedback[]>(reviews);
+  const chatRoomsRef = useRef<ChatRoom[]>(chatRooms);
+
+  // Sync refs to current values on every render
+  productsRef.current = products;
+  categoriesRef.current = categoriesData;
+  usersRef.current = registeredUsers;
+  ordersRef.current = orders;
+  reviewsRef.current = reviews;
+  chatRoomsRef.current = chatRooms;
+
+  // Generic LWW merge helper
+  function mergeCollections<T extends { id?: string; name?: string; email?: string; updatedAt?: number }>(
+    local: T[],
+    remote: T[],
+    keyExtractor: (item: T) => string
+  ): T[] {
+    const map = new Map<string, T>();
+    
+    // Add all local items
+    local.forEach((item) => {
+      const key = keyExtractor(item);
+      if (key) map.set(key, item);
+    });
+    
+    // Merge remote items using Last-Write-Wins (using updatedAt timestamp)
+    remote.forEach((item) => {
+      const key = keyExtractor(item);
+      if (!key) return;
+      const existing = map.get(key);
+      if (!existing) {
+        map.set(key, item);
+      } else {
+        const existingTime = existing.updatedAt || 0;
+        const itemTime = item.updatedAt || 0;
+        if (itemTime >= existingTime) {
+          map.set(key, item);
+        }
+      }
+    });
+    
+    return Array.from(map.values());
+  }
+
+  // --- WRAPPER STATE SETTERS TO AUTOMATICALLY ATTACH TIMESTAMPS TO EDITS ---
+  const setProducts = (value: React.SetStateAction<Product[]>) => {
+    rawSetProducts((prev) => {
+      const next = typeof value === "function" ? (value as Function)(prev) : value;
+      return next.map((item: Product) => {
+        const prevItem = prev.find((p) => p.id === item.id);
+        if (!prevItem || JSON.stringify(prevItem) !== JSON.stringify(item)) {
+          return { ...item, updatedAt: Date.now() };
+        }
+        return item;
+      });
+    });
+  };
+
+  const setCategoriesData = (value: React.SetStateAction<CategoryData[]>) => {
+    rawSetCategoriesData((prev) => {
+      const next = typeof value === "function" ? (value as Function)(prev) : value;
+      return next.map((item: CategoryData) => {
+        const prevItem = prev.find((c) => c.name === item.name);
+        if (!prevItem || JSON.stringify(prevItem) !== JSON.stringify(item)) {
+          return { ...item, updatedAt: Date.now() };
+        }
+        return item;
+      });
+    });
+  };
+
+  const setRegisteredUsers = (value: React.SetStateAction<User[]>) => {
+    rawSetRegisteredUsers((prev) => {
+      const next = typeof value === "function" ? (value as Function)(prev) : value;
+      return next.map((item: User) => {
+        const prevItem = prev.find((u) => u.id === item.id);
+        if (!prevItem || JSON.stringify(prevItem) !== JSON.stringify(item)) {
+          return { ...item, updatedAt: Date.now() };
+        }
+        return item;
+      });
+    });
+  };
+
+  const setOrders = (value: React.SetStateAction<Order[]>) => {
+    rawSetOrders((prev) => {
+      const next = typeof value === "function" ? (value as Function)(prev) : value;
+      return next.map((item: Order) => {
+        const prevItem = prev.find((o) => o.id === item.id);
+        if (!prevItem || JSON.stringify(prevItem) !== JSON.stringify(item)) {
+          return { ...item, updatedAt: Date.now() };
+        }
+        return item;
+      });
+    });
+  };
+
+  const setReviews = (value: React.SetStateAction<ProductFeedback[]>) => {
+    rawSetReviews((prev) => {
+      const next = typeof value === "function" ? (value as Function)(prev) : value;
+      return next.map((item: ProductFeedback) => {
+        const prevItem = prev.find((r) => r.id === item.id);
+        if (!prevItem || JSON.stringify(prevItem) !== JSON.stringify(item)) {
+          return { ...item, updatedAt: Date.now() };
+        }
+        return item;
+      });
+    });
+  };
+
+  const setChatRooms = (value: React.SetStateAction<ChatRoom[]>) => {
+    rawSetChatRooms((prev) => {
+      const next = typeof value === "function" ? (value as Function)(prev) : value;
+      return next.map((item: ChatRoom) => {
+        const prevItem = prev.find((cr) => cr.id === item.id);
+        if (!prevItem || JSON.stringify(prevItem) !== JSON.stringify(item)) {
+          return { ...item, updatedAt: Date.now() };
+        }
+        return item;
+      });
+    });
+  };
+
+  // Polling fetch: periodic remote fetch from the server to get other devices' updates
   useEffect(() => {
+    let isMounted = true;
+    const fetchSync = async () => {
+      try {
+        const response = await fetch("/api/sync");
+        const json = await response.json();
+        if (!isMounted) return;
+
+        if (json.hasData && json.data) {
+          const d = json.data;
+          
+          if (isFirstSyncRef.current) {
+            // Very first load: Merge local state (loaded from cache) with remote state
+            isFirstSyncRef.current = false;
+            
+            const mergedProducts = mergeCollections(productsRef.current, d.products || [], (p) => p.id);
+            const mergedCategories = mergeCollections(categoriesRef.current, d.categories || [], (c) => c.name);
+            const mergedUsers = mergeCollections(usersRef.current, d.users || [], (u) => u.id);
+            const mergedOrders = mergeCollections(ordersRef.current, d.orders || [], (o) => o.id);
+            const mergedReviews = mergeCollections(reviewsRef.current, d.reviews || [], (r) => r.id);
+            const mergedChatRooms = mergeCollections(chatRoomsRef.current, d.chatRooms || [], (cr) => cr.id);
+
+            // Update local states with the merged values using RAW setters to bypass timestamping on sync
+            rawSetProducts(mergedProducts);
+            rawSetCategoriesData(mergedCategories);
+            rawSetRegisteredUsers(mergedUsers);
+            rawSetOrders(mergedOrders);
+            rawSetReviews(mergedReviews);
+            rawSetChatRooms(mergedChatRooms);
+
+            // Construct the unified payload of the merged states
+            const mergedPayload = {
+              products: mergedProducts,
+              categories: mergedCategories,
+              users: mergedUsers,
+              orders: mergedOrders,
+              reviews: mergedReviews,
+              chatRooms: mergedChatRooms,
+            };
+            const mergedStr = JSON.stringify(mergedPayload);
+            lastSyncedRef.current = mergedStr;
+
+            // Instantly push the merged result to the server so that both local cache and server are fully synced
+            await fetch("/api/sync", {
+              method: "POST",
+              headers: { "Content-Type": "application/json" },
+              body: mergedStr,
+            });
+          } else {
+            // Subsequent polls: Server is the single source of truth!
+            const remoteStr = JSON.stringify(json.data);
+            if (remoteStr !== lastSyncedRef.current) {
+              lastSyncedRef.current = remoteStr;
+              
+              if (d.products) rawSetProducts(d.products);
+              if (d.categories) rawSetCategoriesData(d.categories);
+              if (d.users) rawSetRegisteredUsers(d.users);
+              if (d.orders) rawSetOrders(d.orders);
+              if (d.reviews) rawSetReviews(d.reviews);
+              if (d.chatRooms) rawSetChatRooms(d.chatRooms);
+            }
+          }
+        } else {
+          // Server database file is empty/uninitialized (first startup). Seed it with current local state!
+          isFirstSyncRef.current = false;
+          const initialPayload = {
+            products: productsRef.current,
+            categories: categoriesRef.current,
+            users: usersRef.current,
+            orders: ordersRef.current,
+            reviews: reviewsRef.current,
+            chatRooms: chatRoomsRef.current,
+          };
+          const payloadStr = JSON.stringify(initialPayload);
+          lastSyncedRef.current = payloadStr;
+
+          await fetch("/api/sync", {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: payloadStr,
+          });
+        }
+      } catch (err) {
+        console.warn("Sync server is currently unreachable or loading:", err);
+      }
+    };
+
+    fetchSync();
+    // Poll every 4 seconds to get instant updates from other devices/browsers
+    const interval = setInterval(fetchSync, 4000);
+    return () => {
+      isMounted = false;
+      clearInterval(interval);
+    };
+  }, []); // Clean polling with empty dependency array!
+
+  // Combined local and remote writer: runs whenever local state undergoes any change
+  useEffect(() => {
+    const currentPayload = {
+      products,
+      categories: categoriesData,
+      users: registeredUsers,
+      orders,
+      reviews,
+      chatRooms,
+    };
+    const currentStr = JSON.stringify(currentPayload);
+
+    // Keep safe local cache updated
+    safeStorage.setItem("wearloop_products", JSON.stringify(products));
     safeStorage.setItem("wearloop_categories", JSON.stringify(categoriesData));
-  }, [categoriesData]);
+    safeStorage.setItem("wearloop_users", JSON.stringify(registeredUsers));
+    safeStorage.setItem("wearloop_orders", JSON.stringify(orders));
+    safeStorage.setItem("wearloop_reviews", JSON.stringify(reviews));
+    safeStorage.setItem("wearloop_chat_rooms", JSON.stringify(chatRooms));
+
+    // If local edits made state different from what we last saw from the server, push to server!
+    if (currentStr !== lastSyncedRef.current) {
+      lastSyncedRef.current = currentStr;
+
+      fetch("/api/sync", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: currentStr,
+      }).catch((err) => console.error("Error pushing state to server:", err));
+    }
+  }, [products, categoriesData, registeredUsers, orders, reviews, chatRooms]);
 
   useEffect(() => {
     safeStorage.setItem("wearloop_likes", JSON.stringify(likes));
@@ -409,22 +661,6 @@ export default function App() {
       safeStorage.removeItem("wearloop_current_user");
     }
   }, [currentUser]);
-
-  useEffect(() => {
-    safeStorage.setItem("wearloop_users", JSON.stringify(registeredUsers));
-  }, [registeredUsers]);
-
-  useEffect(() => {
-    safeStorage.setItem("wearloop_orders", JSON.stringify(orders));
-  }, [orders]);
-
-  useEffect(() => {
-    safeStorage.setItem("wearloop_reviews", JSON.stringify(reviews));
-  }, [reviews]);
-
-  useEffect(() => {
-    safeStorage.setItem("wearloop_chat_rooms", JSON.stringify(chatRooms));
-  }, [chatRooms]);
 
   useEffect(() => {
     safeStorage.setItem("wearloop_active_page", activePage);

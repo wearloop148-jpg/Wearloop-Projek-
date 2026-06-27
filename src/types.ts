@@ -25,6 +25,7 @@ export interface Product {
   color?: string;
   description?: string;
   stock?: number;
+  updatedAt?: number;
 }
 
 export interface ChatMessage {
@@ -46,12 +47,14 @@ export interface ChatRoom {
   buyerName: string;
   messages: ChatMessage[];
   lastUpdated: string;
+  updatedAt?: number;
 }
 
 export interface CategoryData {
   name: string;
   count: string;
   image: string;
+  updatedAt?: number;
 }
 
 export interface ProductFeedback {
@@ -63,6 +66,7 @@ export interface ProductFeedback {
   reviewText: string;
   createdAt: string;
   isApproved: boolean; // moderated by admin before appearing!
+  updatedAt?: number;
 }
 
 export type Page = 
@@ -97,6 +101,7 @@ export interface User {
   bankAccountHolder?: string;
   bankBranch?: string;
   bankPhone?: string;
+  updatedAt?: number;
 }
 
 export interface Order {
@@ -123,6 +128,7 @@ export interface Order {
   status: "pending_payment" | "paid" | "shipped" | "completed" | "cancelled" | "packing" | "with_courier" | "in_transit";
   createdAt: string;
   paymentProof?: string;
+  updatedAt?: number;
 }
 
 export interface FilterState {

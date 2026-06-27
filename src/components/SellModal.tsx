@@ -9,7 +9,7 @@ interface SellModalProps {
 
 export default function SellModal({ isOpen, onClose, onAddProduct }: SellModalProps) {
   const [name, setName] = useState("");
-  const [category, setCategory] = useState<Product["category"]>("T-Shirt");
+  const [category, setCategory] = useState<Product["category"]>("Shirt");
   const [size, setSize] = useState<Product["size"]>("M");
   const [condition, setCondition] = useState<Product["condition"]>("Like New");
   const [price, setPrice] = useState("");
@@ -57,7 +57,7 @@ export default function SellModal({ isOpen, onClose, onAddProduct }: SellModalPr
     // Reset fields
     setName("");
     setPrice("");
-    setCategory("T-Shirt");
+    setCategory("Shirt");
     setSize("M");
     setCondition("Like New");
   };
@@ -114,12 +114,12 @@ export default function SellModal({ isOpen, onClose, onAddProduct }: SellModalPr
                   value={category}
                   onChange={(e) => setCategory(e.target.value as Product["category"])}
                 >
-                  <option value="T-Shirt">T-Shirt</option>
+                  <option value="Shirt">Shirt</option>
                   <option value="Hoodie">Hoodie</option>
                   <option value="Jacket">Jacket</option>
                   <option value="Pants">Pants</option>
                   <option value="Accessories">Accessories</option>
-                  <option value="Shoes">Shoes</option>
+                  <option value="Sneakers">Sneakers</option>
                 </select>
               </div>
 

@@ -134,7 +134,7 @@ export default function Footer({ setActivePage, onShowNewsletterToast }: FooterP
             <div className="lg:col-span-2 text-left">
               <h4 className="font-semibold text-sm text-[#0f172a] mb-4">Shop</h4>
               <ul className="space-y-2.5 text-xs text-gray-400 font-medium">
-                {["All Products", "T-Shirt", "Hoodie", "Jacket", "Pants", "Accessories", "Shoes"].map((cat) => (
+                {["All Products", "Shirt", "Hoodie", "Jacket", "Pants", "Accessories", "Sneakers"].map((cat) => (
                   <li key={cat}>
                     <a
                       onClick={(e) => {

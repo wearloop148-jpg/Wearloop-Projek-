@@ -243,15 +243,15 @@ export default function Produk({
                     <span className="text-xs text-gray-400">1.248</span>
                   </label>
 
-                  {["T-Shirt", "Hoodie", "Jacket", "Pants", "Accessories", "Shoes"].map((cat) => {
+                  {["Shirt", "Hoodie", "Jacket", "Pants", "Accessories", "Sneakers"].map((cat) => {
                     const isChecked = initialFilters.categories.includes(cat);
                     const mockCounts: Record<string, string> = {
-                      "T-Shirt": "120",
+                      "Shirt": "120",
                       "Hoodie": "98",
                       "Jacket": "150",
                       "Pants": "110",
                       "Accessories": "70",
-                      "Shoes": "90"
+                      "Sneakers": "90"
                     };
                     return (
                       <label key={cat} className="flex items-center justify-between cursor-pointer">

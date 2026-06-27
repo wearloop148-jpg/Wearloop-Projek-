@@ -93,7 +93,7 @@ export default function AdminDashboard({
   const [prodName, setProdName] = useState("");
   const [prodBrand, setProdBrand] = useState("Nike");
   const [prodPrice, setProdPrice] = useState("");
-  const [prodCategory, setProdCategory] = useState("T-Shirt");
+  const [prodCategory, setProdCategory] = useState("Shirt");
   const [prodSize, setProdSize] = useState("L");
   const [prodCondition, setProdCondition] = useState("Like New");
   const [prodColor, setProdColor] = useState("Black");
