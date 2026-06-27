@@ -530,42 +530,56 @@ export default function App() {
           const d = json.data;
           
           if (isFirstSyncRef.current) {
-            // Very first load: Merge local state (loaded from cache) with remote state
             isFirstSyncRef.current = false;
             
-            const mergedProducts = mergeCollections(productsRef.current, d.products || [], (p) => p.id);
-            const mergedCategories = mergeCollections(categoriesRef.current, d.categories || [], (c) => c.name);
-            const mergedUsers = mergeCollections(usersRef.current, d.users || [], (u) => u.id);
-            const mergedOrders = mergeCollections(ordersRef.current, d.orders || [], (o) => o.id);
-            const mergedReviews = mergeCollections(reviewsRef.current, d.reviews || [], (r) => r.id);
-            const mergedChatRooms = mergeCollections(chatRoomsRef.current, d.chatRooms || [], (cr) => cr.id);
+            // Check if this device has actual custom modifications in local storage
+            const hasLocalCache = !!safeStorage.getItem("wearloop_products");
+            
+            if (!hasLocalCache) {
+              // Completely fresh device/browser (e.g. device B, fresh hosting load).
+              // Adopt server state exactly as-is to avoid polluting it with defaults or overwriting newer uploads.
+              if (d.products) rawSetProducts(d.products);
+              if (d.categories) rawSetCategoriesData(d.categories);
+              if (d.users) rawSetRegisteredUsers(d.users);
+              if (d.orders) rawSetOrders(d.orders);
+              if (d.reviews) rawSetReviews(d.reviews);
+              if (d.chatRooms) rawSetChatRooms(d.chatRooms);
 
-            // Update local states with the merged values using RAW setters to bypass timestamping on sync
-            rawSetProducts(mergedProducts);
-            rawSetCategoriesData(mergedCategories);
-            rawSetRegisteredUsers(mergedUsers);
-            rawSetOrders(mergedOrders);
-            rawSetReviews(mergedReviews);
-            rawSetChatRooms(mergedChatRooms);
+              const remoteStr = JSON.stringify(d);
+              lastSyncedRef.current = remoteStr;
+            } else {
+              // Local cache exists (e.g. device A). Perform safe Last-Write-Wins merge.
+              const mergedProducts = mergeCollections(productsRef.current, d.products || [], (p) => p.id);
+              const mergedCategories = mergeCollections(categoriesRef.current, d.categories || [], (c) => c.name);
+              const mergedUsers = mergeCollections(usersRef.current, d.users || [], (u) => u.id);
+              const mergedOrders = mergeCollections(ordersRef.current, d.orders || [], (o) => o.id);
+              const mergedReviews = mergeCollections(reviewsRef.current, d.reviews || [], (r) => r.id);
+              const mergedChatRooms = mergeCollections(chatRoomsRef.current, d.chatRooms || [], (cr) => cr.id);
 
-            // Construct the unified payload of the merged states
-            const mergedPayload = {
-              products: mergedProducts,
-              categories: mergedCategories,
-              users: mergedUsers,
-              orders: mergedOrders,
-              reviews: mergedReviews,
-              chatRooms: mergedChatRooms,
-            };
-            const mergedStr = JSON.stringify(mergedPayload);
-            lastSyncedRef.current = mergedStr;
+              rawSetProducts(mergedProducts);
+              rawSetCategoriesData(mergedCategories);
+              rawSetRegisteredUsers(mergedUsers);
+              rawSetOrders(mergedOrders);
+              rawSetReviews(mergedReviews);
+              rawSetChatRooms(mergedChatRooms);
 
-            // Instantly push the merged result to the server so that both local cache and server are fully synced
-            await fetch("/api/sync", {
-              method: "POST",
-              headers: { "Content-Type": "application/json" },
-              body: mergedStr,
-            });
+              const mergedPayload = {
+                products: mergedProducts,
+                categories: mergedCategories,
+                users: mergedUsers,
+                orders: mergedOrders,
+                reviews: mergedReviews,
+                chatRooms: mergedChatRooms,
+              };
+              const mergedStr = JSON.stringify(mergedPayload);
+              lastSyncedRef.current = mergedStr;
+
+              await fetch("/api/sync", {
+                method: "POST",
+                headers: { "Content-Type": "application/json" },
+                body: mergedStr,
+              });
+            }
           } else {
             // Subsequent polls: Server is the single source of truth!
             const remoteStr = JSON.stringify(json.data);
@@ -616,6 +630,19 @@ export default function App() {
 
   // Combined local and remote writer: runs whenever local state undergoes any change
   useEffect(() => {
+    // Keep safe local cache updated
+    safeStorage.setItem("wearloop_products", JSON.stringify(products));
+    safeStorage.setItem("wearloop_categories", JSON.stringify(categoriesData));
+    safeStorage.setItem("wearloop_users", JSON.stringify(registeredUsers));
+    safeStorage.setItem("wearloop_orders", JSON.stringify(orders));
+    safeStorage.setItem("wearloop_reviews", JSON.stringify(reviews));
+    safeStorage.setItem("wearloop_chat_rooms", JSON.stringify(chatRooms));
+
+    // CRITICAL: Prevent initial un-synced default states from posting and overwriting remote server database
+    if (isFirstSyncRef.current) {
+      return;
+    }
+
     const currentPayload = {
       products,
       categories: categoriesData,
@@ -625,14 +652,6 @@ export default function App() {
       chatRooms,
     };
     const currentStr = JSON.stringify(currentPayload);
-
-    // Keep safe local cache updated
-    safeStorage.setItem("wearloop_products", JSON.stringify(products));
-    safeStorage.setItem("wearloop_categories", JSON.stringify(categoriesData));
-    safeStorage.setItem("wearloop_users", JSON.stringify(registeredUsers));
-    safeStorage.setItem("wearloop_orders", JSON.stringify(orders));
-    safeStorage.setItem("wearloop_reviews", JSON.stringify(reviews));
-    safeStorage.setItem("wearloop_chat_rooms", JSON.stringify(chatRooms));
 
     // If local edits made state different from what we last saw from the server, push to server!
     if (currentStr !== lastSyncedRef.current) {
